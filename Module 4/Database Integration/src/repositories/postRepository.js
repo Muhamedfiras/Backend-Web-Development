@@ -1,6 +1,20 @@
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 
-const prisma = new PrismaClient();
+function handleDatabaseError(error) {
+  if (error && error.code === 'P2002') {
+    const conflict = new Error('A record with these values already exists');
+    conflict.statusCode = 409;
+    throw conflict;
+  }
+
+  if (error && error.code === 'P2003') {
+    const conflict = new Error('The related record does not exist');
+    conflict.statusCode = 409;
+    throw conflict;
+  }
+
+  throw error;
+}
 
 function toPostRecord(post) {
   if (!post) return null;
@@ -28,17 +42,18 @@ async function findById(id) {
 }
 
 async function create(fields = {}) {
-  const title = fields.title;
-  const body = fields.body ?? '';
-  const authorId = fields.authorId === undefined ? undefined : Number(fields.authorId);
-  const post = await prisma.post.create({
-    data: {
-      title,
-      body,
-      authorId,
-    },
-  });
-  return toPostRecord(post);
+  try {
+    const post = await prisma.post.create({
+      data: {
+        title: fields.title,
+        body: fields.body || '',
+        authorId: fields.authorId,
+      },
+    });
+    return toPostRecord(post);
+  } catch (error) {
+    handleDatabaseError(error);
+  }
 }
 
 async function update(id, patch = {}) {
@@ -53,8 +68,8 @@ async function update(id, patch = {}) {
     });
     return toPostRecord(post);
   } catch (error) {
-    if (error.code === 'P2025') return null;
-    throw error;
+    if (error && error.code === 'P2025') return null;
+    handleDatabaseError(error);
   }
 }
 
@@ -66,8 +81,8 @@ async function remove(id) {
     });
     return true;
   } catch (error) {
-    if (error.code === 'P2025') return false;
-    throw error;
+    if (error && error.code === 'P2025') return false;
+    handleDatabaseError(error);
   }
 }
 
